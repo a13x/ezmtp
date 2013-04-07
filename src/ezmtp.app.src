@@ -1,0 +1,14 @@
+{application, ezmtp, [
+	{description, "Ranch ZMTP example."},
+	{vsn, "1"},
+	{modules, []},
+	{registered, []},
+	{applications, [
+		kernel,
+		stdlib,
+		sasl,
+		ranch
+	]},
+	{mod, {ezmtp_app, []}},
+	{env, []}
+]}.
