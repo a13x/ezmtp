@@ -12,23 +12,8 @@
 %% ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 %% OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-%% @private
--module(ezmtp_sup).
--behaviour(supervisor).
+-module(ezmtp_handler).
 
-%% API.
--export([start_link/0]).
-
-%% supervisor.
--export([init/1]).
-
-%% API.
-
--spec start_link() -> {ok, pid()}.
-start_link() ->
-	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
-
-%% supervisor.
-
-init([]) ->
-	{ok, {{one_for_one, 10, 10}, []}}.
+-callback handle(Req, State)
+        -> {ok, Req, State}
+        when Req::list(), State::ezmtp13_protocol:state().
