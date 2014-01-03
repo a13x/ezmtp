@@ -33,7 +33,7 @@ start_link(Ref, Socket, Transport, Opts) ->
 init(Ref, Socket, Transport, Opts) ->
 	ok = ranch:accept_ack(Ref),
 	ok = greeting(Transport, Socket),
-	Handler=proplists:get_value(handler, Opts), 
+	Handler=proplists:get_value(handler, Opts),
 	loop(<<>>, #zmtp_state{socket=Socket, transport=Transport, frames=[], handler=Handler}).
 
 greeting(Transport, Socket) ->
@@ -41,7 +41,8 @@ greeting(Transport, Socket) ->
 		{ok, <<1,0>>} ->
 			Transport:send(Socket, <<1,0>>),
 			ok;
-		{_, _} ->
+		{error, _} ->
+			ok = Transport:close(Socket),
 			{error, wrong_greeting}
 	end.
 
@@ -57,8 +58,8 @@ loop(Buffer, State=#zmtp_state{socket=Socket, transport=Transport}) ->
 parse_frames(<<>>, _State) ->
 	{ok, <<>>};
 
-parse_frames(Data, State=#zmtp_state{frames=Frames}) ->	
-	case parse_frame(Data) of
+parse_frames(Data, State=#zmtp_state{frames=Frames}) ->
+	case parse_frame(Data, State) of
 		{envelope, Buffer} ->
 			parse_frames(Buffer, State);
 		{more, Frame, Buffer} ->
@@ -68,19 +69,34 @@ parse_frames(Data, State=#zmtp_state{frames=Frames}) ->
 			{ok, Buffer}
 	end.
 
-parse_frame(<<1,1, Rest/bytes>>) ->
+parse_frame(<<1,1, Rest/bytes>>, _State) ->
 	{envelope, Rest};
 
-parse_frame(Data) ->
+parse_frame(Data, State) ->
 	case Data of
-		<<Len:8,1,Buffer/bytes>> -> extract_body(Buffer, Len - 1, more);
-		<<Len:8,0,Buffer/bytes>> -> extract_body(Buffer, Len - 1, last)
+		<<255,Len:64,1,Buffer/bytes>> -> 
+			extract_body(Buffer, Len - 1, more, State);
+		<<255,Len:64,0,Buffer/bytes>> -> 
+			extract_body(Buffer, Len - 1, last, State);
+		<<Len:8,1,Buffer/bytes>> ->
+			extract_body(Buffer, Len - 1, more, State);
+		<<Len:8,0,Buffer/bytes>> -> 			
+			extract_body(Buffer, Len - 1, last, State)
+		
 	end.
 
-extract_body(Buffer, Len, Tag) ->
+extract_body(Buffer, Len, Tag, _State) when Len =< byte_size(Buffer) ->
 	<<Body:Len/bytes, Rest/bytes>> = Buffer,
-	{Tag, Body, Rest}.
+	{Tag, Body, Rest};
 
-execute(State=#zmtp_state{frames=Frames, handler=Handler}) ->
+extract_body(Buffer, Len, Tag, State) ->
+	Size = Len - byte_size(Buffer),
+	Transport = State#zmtp_state.transport,
+	Socket = State#zmtp_state.socket,
+	{ok, MoreData} = Transport:recv(Socket, Size, 5000),
+	extract_body(<< Buffer/bytes, MoreData/bytes>>, Len, Tag, State).
+
+execute(State=#zmtp_state{frames=Frames, handler=Handler, transport=Transport, socket=Socket}) ->
 	FramesInRightOrder = lists:reverse(Frames),	
-	Handler:handle(FramesInRightOrder, State).
+	{ok, Result} = Handler:handle(FramesInRightOrder, State),
+	Transport:send(Socket, Result).

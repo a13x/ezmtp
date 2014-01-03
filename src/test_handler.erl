@@ -21,7 +21,6 @@
 %%
 %% Simple handler that prints out whatever comes in from ZMTP socket
 %% 
-handle(Req, State=#zmtp_state{transport=Transport, socket=Socket}) ->
+handle(Req, _State) ->
 	lists:foreach(fun(X) -> io:format("frame: ~s~n", [X]) end, Req),
-	Transport:send(Socket, <<"LOL">>),
-	{ok, State}.
+	{ok, <<"LOL">>}.
